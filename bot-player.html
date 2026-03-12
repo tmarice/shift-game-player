@@ -1,0 +1,653 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Shift Duck: Production Panic — MPC Bot Player</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0b1020;
+      --panel: #121a31;
+      --panel2: #0d1430;
+      --text: #edf2ff;
+      --muted: #9aa8cf;
+      --line: #2a355e;
+      --good: #47d68b;
+      --warn: #ffcb6b;
+      --bad: #ff6b81;
+      --accent: #fc6423;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: linear-gradient(180deg, #0a0f1d 0%, #0e1630 100%);
+      color: var(--text);
+    }
+    .layout {
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: 340px 1fr;
+    }
+    .sidebar {
+      padding: 20px;
+      border-right: 1px solid var(--line);
+      background: rgba(10, 15, 29, 0.92);
+      backdrop-filter: blur(8px);
+      overflow-y: auto;
+      max-height: 100vh;
+    }
+    .main { padding: 18px; overflow-y: auto; }
+    h1 { margin: 0 0 8px; font-size: 24px; }
+    h2 { margin: 16px 0 8px; font-size: 14px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+    p { margin: 0 0 10px; line-height: 1.45; color: var(--muted); font-size: 13px; }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    button {
+      appearance: none;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #1a264a;
+      color: var(--text);
+      padding: 8px 12px;
+      cursor: pointer;
+      font: inherit;
+      font-size: 13px;
+    }
+    button:hover { filter: brightness(1.08); }
+    button.primary { background: #243972; border-color: #3b5998; }
+    button.good { background: #173f2b; border-color: #2d7a54; }
+    button.warn { background: #4d3913; border-color: #9d7a2b; }
+    button.bad { background: #4c1826; border-color: #9b324b; }
+    .kv {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 6px;
+      margin: 4px 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .kv strong { color: var(--text); }
+    .status-good { color: var(--good); }
+    .status-warn { color: var(--warn); }
+    .status-bad { color: var(--bad); }
+    .slider-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin: 8px 0;
+    }
+    .slider-row label { font-size: 13px; color: var(--muted); min-width: 60px; }
+    .slider-row input[type="range"] { flex: 1; }
+    .slider-row .value { min-width: 32px; text-align: right; font-weight: 600; }
+    .stage {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 12px;
+    }
+    #gameCanvas {
+      display: block;
+      background: #1f2937;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      color: var(--text);
+      background: var(--panel2);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+      font-size: 12px;
+    }
+    th, td {
+      text-align: left;
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--line);
+    }
+    th {
+      color: var(--muted);
+      font-weight: 600;
+      background: rgba(255,255,255,0.02);
+    }
+    tr:last-child td { border-bottom: 0; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .hud-row {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+    }
+    .hud-item {
+      background: var(--panel2);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 8px 12px;
+      font-size: 13px;
+    }
+    .hud-item .label { color: var(--muted); font-size: 11px; }
+    .hud-item .value { font-size: 18px; font-weight: 600; color: var(--accent); }
+    .policy-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+    .tag {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 4px;
+      background: rgba(252, 100, 35, 0.15);
+      border: 1px solid rgba(252, 100, 35, 0.3);
+      color: var(--accent);
+      font-size: 11px;
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <h1>MPC Bot Player</h1>
+      <p>Model-Predictive Control bot for Shift Duck: Production Panic</p>
+
+      <div class="card">
+        <h2>Controls</h2>
+        <div class="row">
+          <button id="startBtn" class="primary">Start</button>
+          <button id="pauseBtn" class="warn">Pause</button>
+          <button id="botBtn" class="good">Bot: ON</button>
+        </div>
+        <div class="slider-row">
+          <label>Speed</label>
+          <input type="range" id="speedSlider" min="1" max="10" value="1" />
+          <span class="value" id="speedValue">1x</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Game State</h2>
+        <div class="kv"><span>Status</span><strong id="gameState" class="status-warn">waiting</strong></div>
+        <div class="kv"><span>Score</span><strong id="uiScore">0</strong></div>
+        <div class="kv"><span>Lives</span><strong id="uiLives">3</strong></div>
+        <div class="kv"><span>Game Time</span><strong id="uiTime">0</strong></div>
+        <div class="kv"><span>Enemies</span><strong id="uiEnemies">0</strong></div>
+      </div>
+
+      <div class="card">
+        <h2>Bot Status</h2>
+        <div class="kv"><span>State</span><strong id="botState" class="status-good">active</strong></div>
+        <div class="kv"><span>Decision</span><strong id="botDecision">idle</strong></div>
+        <div class="kv"><span>Target</span><strong id="botTarget">none</strong></div>
+        <div class="kv"><span>Action</span><strong id="botAction">none</strong></div>
+        <div class="policy-tags">
+          <span class="tag">Greedy Target</span>
+          <span class="tag">Firing Band</span>
+          <span class="tag">Urgency Priority</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Leaderboard</h2>
+        <div id="leaderboard"></div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <div class="hud-row">
+        <div class="hud-item">
+          <div class="label">Score</div>
+          <div class="value" id="hudScore">0</div>
+        </div>
+        <div class="hud-item">
+          <div class="label">Lives</div>
+          <div class="value" id="hudLives">3</div>
+        </div>
+        <div class="hud-item">
+          <div class="label">Time</div>
+          <div class="value" id="hudTime">0:00</div>
+        </div>
+      </div>
+
+      <div class="stage">
+        <canvas id="gameCanvas" width="800" height="500"></canvas>
+      </div>
+    </main>
+  </div>
+
+  <!-- Hidden elements that game.js expects -->
+  <div id="score" style="display:none;">Score: 0</div>
+  <div id="lives" style="display:none;">Lives: 3</div>
+
+  <!-- Intercept game loop BEFORE game.js loads -->
+  <script>
+    // Capture the original requestAnimationFrame
+    const _originalRAF = window.requestAnimationFrame.bind(window);
+    let _gameLoopCallback = null;
+    let _intercepted = false;
+
+    // Intercept to capture game.js's gameLoop
+    window.requestAnimationFrame = function(callback) {
+      if (!_intercepted) {
+        _gameLoopCallback = callback;
+        _intercepted = true;
+        // Don't call the original - we'll run our own loop
+        return 0;
+      }
+      return _originalRAF(callback);
+    };
+  </script>
+
+  <!-- Load the original game.js -->
+  <script src="https://epits1.github.io/shift_game/game.js"></script>
+
+  <!-- Bot controller that hooks into the game -->
+  <script>
+    // Restore original requestAnimationFrame
+    window.requestAnimationFrame = _originalRAF;
+
+    // ========================================
+    // BOT CONTROLLER
+    // ========================================
+
+    const bot = {
+      enabled: true,
+      decision: 'idle',
+      target: 'none',
+      action: 'none'
+    };
+
+    let speedMultiplier = 1;
+    let gamePaused = false;
+    const LEADERBOARD_KEY = 'shift-duck-mpc-leaderboard-v1';
+    let currentRunSubmitted = false;
+
+    // Game constants
+    const CANVAS_WIDTH = canvas.width;
+    const CANVAS_HEIGHT = canvas.height;
+    const PLAYER_HEIGHT = 40;
+
+    // ========================================
+    // BOT DECISION LOGIC
+    // ========================================
+
+    function getFiringBand(enemy) {
+      // From problem.md: bullet at player.y + 18, height 8
+      // Collision margin is 6px
+      // For bullet to hit enemy: bullet.y < enemy.y + enemy.height + 6 AND bullet.y + 8 > enemy.y - 6
+      // So: player.y + 18 < enemy.y + enemy.height + 6 AND player.y + 26 > enemy.y - 6
+      // Solving for player.y: player.y < enemy.y + enemy.height - 12 AND player.y > enemy.y - 32
+      return {
+        low: enemy.y - 32,
+        high: enemy.y + enemy.height - 12
+      };
+    }
+
+    function isInFiringBand(playerY, enemy) {
+      const band = getFiringBand(enemy);
+      return playerY >= band.low && playerY <= band.high;
+    }
+
+    function getTimeToEscape(enemy) {
+      // Time until enemy crosses left edge and we lose a life
+      return (enemy.x + enemy.width) / enemy.speed;
+    }
+
+    function getTimeToReach(enemy) {
+      // Rough estimate of frames to get into firing position
+      const band = getFiringBand(enemy);
+      const bandCenter = (band.low + band.high) / 2;
+      const distance = Math.abs(player.y - bandCenter);
+      // Account for inertia - can't instantly change direction
+      return distance / 4 + Math.abs(player.vy) * 2;
+    }
+
+    function isBulletHeadingToEnemy(enemy) {
+      // Check if any existing bullet will hit this enemy
+      for (const b of bullets) {
+        // Will bullet reach enemy's x position?
+        const timeToReach = (enemy.x - b.x) / (b.speed + enemy.speed);
+        if (timeToReach < 0) continue;
+
+        // Check vertical alignment with margin
+        const enemyTop = enemy.y - 6;
+        const enemyBottom = enemy.y + enemy.height + 6;
+        const bulletTop = b.y;
+        const bulletBottom = b.y + b.height;
+
+        if (bulletBottom > enemyTop && bulletTop < enemyBottom) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    function selectTarget() {
+      if (enemies.length === 0) return null;
+
+      let bestTarget = null;
+      let bestScore = -Infinity;
+
+      for (const enemy of enemies) {
+        const timeToEscape = getTimeToEscape(enemy);
+        const timeToReach = getTimeToReach(enemy);
+        const shotsNeeded = enemy.hp;
+        const timeToKill = timeToReach + shotsNeeded * 15; // 15 frames cooldown per shot
+
+        // Can we kill it in time?
+        const feasible = timeToKill < timeToEscape - 30; // 30 frame safety margin
+
+        // Priority scoring
+        let priority = 0;
+
+        // Urgency: enemies about to escape get highest priority
+        if (timeToEscape < 120) {
+          priority += (120 - timeToEscape) * 10;
+        }
+
+        // Reward per effort
+        const reward = enemy.isBoss ? 100 : 10;
+        priority += reward / (timeToReach + 1);
+
+        // Bonus for bosses (better points per shot)
+        if (enemy.isBoss) {
+          priority += 50;
+        }
+
+        // Penalty if already covered by bullets
+        if (isBulletHeadingToEnemy(enemy) && !enemy.isBoss) {
+          priority -= 100;
+        }
+
+        // Penalty for infeasible targets
+        if (!feasible) {
+          priority -= 200;
+        }
+
+        if (priority > bestScore) {
+          bestScore = priority;
+          bestTarget = enemy;
+        }
+      }
+
+      return bestTarget;
+    }
+
+    function botDecide() {
+      const target = selectTarget();
+
+      if (!target) {
+        // No target - return to center
+        const centerY = CANVAS_HEIGHT / 2 - PLAYER_HEIGHT / 2;
+        let vertical = 0;
+        if (player.y < centerY - 20) vertical = 1;
+        else if (player.y > centerY + 20) vertical = -1;
+
+        return { vertical, shoot: false, decision: 'centering', target: 'none' };
+      }
+
+      const band = getFiringBand(target);
+      const bandCenter = (band.low + band.high) / 2;
+      const inBand = isInFiringBand(player.y, target);
+
+      // Determine vertical movement
+      let vertical = 0;
+      const diff = bandCenter - player.y;
+
+      // Use proportional control with deadband
+      if (Math.abs(diff) > 8) {
+        // Consider current velocity - don't overshoot
+        const predictedY = player.y + player.vy * 5;
+        const predictedDiff = bandCenter - predictedY;
+
+        if (Math.abs(predictedDiff) > 5) {
+          vertical = predictedDiff > 0 ? 1 : -1;
+        }
+      }
+
+      // Hard boundary checks
+      if (player.y <= 2) {
+        vertical = Math.max(0, vertical); // Can only go down or stay
+      }
+      if (player.y >= CANVAS_HEIGHT - PLAYER_HEIGHT - 2) {
+        vertical = Math.min(0, vertical); // Can only go up or stay
+      }
+
+      // Shooting decision
+      let shouldShoot = false;
+      if (inBand && shootCooldown === 0) {
+        // For bosses, always shoot when aligned
+        // For regular enemies, don't shoot if bullet already heading there
+        if (target.isBoss || !isBulletHeadingToEnemy(target)) {
+          shouldShoot = true;
+        }
+      }
+
+      const decision = inBand ? 'firing' : 'moving to target';
+      const targetName = target.isBoss ? 'BOSS' : (target.type || 'enemy');
+
+      return { vertical, shoot: shouldShoot, decision, target: targetName };
+    }
+
+    // ========================================
+    // BOT CONTROL APPLICATION
+    // ========================================
+
+    function applyBotControl() {
+      if (!bot.enabled) {
+        bot.decision = 'disabled';
+        bot.action = 'none';
+        return;
+      }
+
+      // Auto-start
+      if (!gameStarted) {
+        gameStarted = true;
+        restartGame();
+        bot.decision = 'starting';
+        return;
+      }
+
+      // Auto-restart on game over
+      if (gameOver) {
+        maybeRecordScore();
+        currentRunSubmitted = false;
+        restartGame();
+        gameStarted = true;
+        bot.decision = 'restarting';
+        return;
+      }
+
+      // Clear previous input
+      keys['ArrowUp'] = false;
+      keys['ArrowDown'] = false;
+
+      // Get bot decision
+      const decision = botDecide();
+      bot.decision = decision.decision;
+      bot.target = decision.target;
+
+      // Apply vertical movement
+      if (decision.vertical === -1) {
+        keys['ArrowUp'] = true;
+        bot.action = 'up';
+      } else if (decision.vertical === 1) {
+        keys['ArrowDown'] = true;
+        bot.action = 'down';
+      } else {
+        bot.action = 'hold';
+      }
+
+      // Apply shooting
+      if (decision.shoot) {
+        shoot();
+        bot.action += ' + shoot';
+      }
+    }
+
+    // ========================================
+    // MAIN GAME LOOP (replaces game.js loop)
+    // ========================================
+
+    function mainLoop() {
+      if (!gamePaused) {
+        for (let i = 0; i < speedMultiplier; i++) {
+          applyBotControl();
+          update();
+
+          if (gameOver) {
+            maybeRecordScore();
+            break;
+          }
+        }
+      }
+
+      draw();
+      syncUI();
+      requestAnimationFrame(mainLoop);
+    }
+
+    // ========================================
+    // LEADERBOARD
+    // ========================================
+
+    function getLeaderboard() {
+      try {
+        const raw = localStorage.getItem(LEADERBOARD_KEY);
+        return raw ? JSON.parse(raw) : [];
+      } catch { return []; }
+    }
+
+    function saveLeaderboard(entries) {
+      localStorage.setItem(LEADERBOARD_KEY, JSON.stringify(entries));
+    }
+
+    function maybeRecordScore() {
+      if (currentRunSubmitted || score <= 0) return;
+
+      const entries = getLeaderboard();
+      entries.push({
+        score,
+        duration: gameTime,
+        date: new Date().toISOString(),
+        speed: speedMultiplier
+      });
+      entries.sort((a, b) => b.score - a.score);
+      saveLeaderboard(entries.slice(0, 10));
+      currentRunSubmitted = true;
+      renderLeaderboard();
+    }
+
+    function renderLeaderboard() {
+      const entries = getLeaderboard();
+      const container = document.getElementById('leaderboard');
+
+      if (entries.length === 0) {
+        container.innerHTML = '<p style="color: var(--muted); font-size: 12px;">No scores yet</p>';
+        return;
+      }
+
+      const rows = entries.map((e, i) => {
+        const date = new Date(e.date).toLocaleDateString();
+        const time = Math.floor(e.duration / 60);
+        return `<tr>
+          <td>${i + 1}</td>
+          <td>${e.score}</td>
+          <td>${time}s</td>
+          <td>${e.speed}x</td>
+          <td>${date}</td>
+        </tr>`;
+      }).join('');
+
+      container.innerHTML = `<table>
+        <thead><tr><th>#</th><th>Score</th><th>Time</th><th>Speed</th><th>Date</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+    }
+
+    // ========================================
+    // UI SYNC
+    // ========================================
+
+    function syncUI() {
+      document.getElementById('gameState').textContent =
+        !gameStarted ? 'waiting' : (gameOver ? 'game over' : (gamePaused ? 'paused' : 'running'));
+      document.getElementById('gameState').className =
+        !gameStarted ? 'status-warn' : (gameOver ? 'status-bad' : (gamePaused ? 'status-warn' : 'status-good'));
+
+      document.getElementById('uiScore').textContent = score;
+      document.getElementById('uiLives').textContent = lives;
+      document.getElementById('uiTime').textContent = gameTime;
+      document.getElementById('uiEnemies').textContent = enemies.length;
+
+      document.getElementById('botState').textContent = bot.enabled ? 'active' : 'disabled';
+      document.getElementById('botState').className = bot.enabled ? 'status-good' : 'status-warn';
+      document.getElementById('botDecision').textContent = bot.decision;
+      document.getElementById('botTarget').textContent = bot.target;
+      document.getElementById('botAction').textContent = bot.action;
+
+      document.getElementById('hudScore').textContent = score;
+      document.getElementById('hudLives').textContent = lives;
+      document.getElementById('hudTime').textContent = formatTime(gameTime);
+
+      document.getElementById('botBtn').textContent = 'Bot: ' + (bot.enabled ? 'ON' : 'OFF');
+      document.getElementById('botBtn').className = bot.enabled ? 'good' : 'warn';
+    }
+
+    function formatTime(frames) {
+      const seconds = Math.floor(frames / 60);
+      const mins = Math.floor(seconds / 60);
+      const secs = seconds % 60;
+      return `${mins}:${secs.toString().padStart(2, '0')}`;
+    }
+
+    // ========================================
+    // EVENT HANDLERS
+    // ========================================
+
+    document.getElementById('startBtn').addEventListener('click', () => {
+      if (!gameStarted || gameOver) {
+        currentRunSubmitted = false;
+        restartGame();
+        gameStarted = true;
+        gamePaused = false;
+      } else if (gamePaused) {
+        gamePaused = false;
+      }
+    });
+
+    document.getElementById('pauseBtn').addEventListener('click', () => {
+      if (gameStarted && !gameOver) {
+        gamePaused = !gamePaused;
+      }
+    });
+
+    document.getElementById('botBtn').addEventListener('click', () => {
+      bot.enabled = !bot.enabled;
+      if (!bot.enabled) {
+        keys['ArrowUp'] = false;
+        keys['ArrowDown'] = false;
+      }
+    });
+
+    document.getElementById('speedSlider').addEventListener('input', (e) => {
+      speedMultiplier = parseInt(e.target.value);
+      document.getElementById('speedValue').textContent = speedMultiplier + 'x';
+    });
+
+    // ========================================
+    // INIT
+    // ========================================
+
+    renderLeaderboard();
+    syncUI();
+
+    // Start our game loop
+    mainLoop();
+  </script>
+</body>
+</html>
