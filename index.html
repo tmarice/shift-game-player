@@ -184,6 +184,7 @@
         <div class="kv"><span>Decision</span><strong id="botDecision">idle</strong></div>
         <div class="kv"><span>Target</span><strong id="botTarget">none</strong></div>
         <div class="kv"><span>Action</span><strong id="botAction">none</strong></div>
+        <div class="kv"><span>Game.js</span><strong id="scriptSource" class="status-warn">loading</strong></div>
         <div class="policy-tags">
           <span class="tag">Greedy Target</span>
           <span class="tag">Firing Band</span>
@@ -242,24 +243,59 @@
     };
   </script>
 
-  <!-- Load the original game.js -->
-  <script src="https://epits1.github.io/shift_game/game.js"></script>
+  <!-- Load the original game.js with SRI, fallback to local copy on error -->
+  <script>
+    function setScriptSource(label, statusClass) {
+      const el = document.getElementById('scriptSource');
+      if (!el) return;
+      el.textContent = label;
+      el.className = statusClass;
+    }
+
+    function loadGameScript() {
+      return new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = 'https://epits1.github.io/shift_game/game.js';
+        s.integrity = 'sha384-MOJvRqawm4yabaJnLhZ3FgmAAchMs33H8ogXqvHUUovtUlKDQibIYGjbelhi1Uta';
+        s.crossOrigin = 'anonymous';
+        s.onload = () => {
+          setScriptSource('remote', 'status-good');
+          resolve();
+        };
+        s.onerror = () => {
+          const local = document.createElement('script');
+          local.src = './game.js';
+          local.onload = () => {
+            setScriptSource('local', 'status-warn');
+            resolve();
+          };
+          local.onerror = () => {
+            setScriptSource('failed', 'status-bad');
+            reject();
+          };
+          document.head.appendChild(local);
+        };
+        document.head.appendChild(s);
+      });
+    }
+  </script>
 
   <!-- Bot controller that hooks into the game -->
   <script>
-    // Restore original requestAnimationFrame
-    window.requestAnimationFrame = _originalRAF;
+    function startBot() {
+      // Restore original requestAnimationFrame
+      window.requestAnimationFrame = _originalRAF;
 
-    // ========================================
-    // BOT CONTROLLER
-    // ========================================
+      // ========================================
+      // BOT CONTROLLER
+      // ========================================
 
-    const bot = {
-      enabled: true,
-      decision: 'idle',
-      target: 'none',
-      action: 'none'
-    };
+      const bot = {
+        enabled: true,
+        decision: 'idle',
+        target: 'none',
+        action: 'none'
+      };
 
     let speedMultiplier = 1;
     let gamePaused = false;
@@ -646,8 +682,24 @@
     renderLeaderboard();
     syncUI();
 
-    // Start our game loop
-    mainLoop();
+      // Start our game loop
+      mainLoop();
+    }
+  </script>
+  <script>
+    loadGameScript()
+      .then(() => {
+        // Bot controller depends on globals defined by game.js.
+        // eslint-disable-next-line no-undef
+        if (typeof canvas !== 'undefined') startBot();
+      })
+      .catch(() => {
+        const state = document.getElementById('gameState');
+        if (state) {
+          state.textContent = 'failed to load game.js';
+          state.className = 'status-bad';
+        }
+      });
   </script>
 </body>
 </html>
